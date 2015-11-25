@@ -33,7 +33,7 @@ import sys
 # import os
 import shutil
 import argparse
-# import subprocess as subp
+import subprocess as subp
 # import imghdr
 # import xml.etree.ElementTree as et
 # import tempfile
@@ -349,19 +349,17 @@ def doparser():
     return args
     
 def dochecks():
-    if not shutil.which('soxi'):
-        print('Cannot find soxi')
+    if not shutil.which('sox'):
+        print('Cannot find sox')
         sys.exit(1)
-    if userargs.preferred == 'mp3':
-        if not shutil.which('flac'):
-            print('Cannot find flac')
-            sys.exit(1)
-        if not shutil.which('lame'):
-            print('Cannot find lame')
-            sys.exit(1)
-    else:
-        if not shutil.which('oggenc'):
-            print('Cannot find oggenc')
+        
+    try:
+        subp.check_output(('sox', '--help-format', userargs.preferred), 
+                          stderr=subp.DEVNULL, 
+                          universal_newlines=True)
+    except subp.CalledProcessError as subperr:
+        if 'Writes:' not in subperr.output:
+            print('Sox cannot handle {}'.format(userargs.preferred))
             sys.exit(1)
  
 if __name__ == '__main__':
