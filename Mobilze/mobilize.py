@@ -30,18 +30,18 @@
 ###################################################################
 # 
 import sys
-# import os
+import os
 import shutil
 import argparse
 import subprocess as subp
-# import imghdr
+import imghdr
 # import xml.etree.ElementTree as et
-# import tempfile
+import tempfile
 # import multiprocessing as mp
-# import unicodedata as uncd
+import unicodedata as uncd
 # 
-# AUDIOTYPES = ('flac', 'vorbis', 'mp3')
-# IMAGETYPES = ('jpeg', 'png')
+AUDIOTYPES = ('flac', 'vorbis', 'mp3')
+IMAGETYPES = ('jpeg', 'png')
 # 
 # def coroutine(f):
 #     def _coroutine(*args, **kwargs):
@@ -65,19 +65,6 @@ import subprocess as subp
 #         except AttributeError:
 #             return os.path.basename(media.spath)
 #     return retstr.rstrip('/')
-# 
-# def getfiletype(fname):
-#         try:
-#                 ftype = subp.check_output(['soxi', '-t', fname], 
-#                         stderr=subp.DEVNULL, 
-#                         universal_newlines=True).rstrip('\n')
-#         except subp.CalledProcessError:
-#                 ftype = imghdr.what(fname)
-#         
-#         if ftype:
-#                 return ftype.lower()
-#         else:
-#                 return None
 # 
 # class ActionBase(object):
 #     def __init__(self, media):
@@ -362,7 +349,50 @@ def dochecks():
             print('Sox cannot handle {}'.format(userargs.preferred))
             sys.exit(1)
  
+def getfiletype(fname):
+    try:
+        ftype = subp.check_output(('soxi', '-t', fname), 
+                stderr=subp.DEVNULL, 
+                universal_newlines=True).rstrip('\n')
+    except subp.CalledProcessError:
+        ftype = imghdr.what(fname)
+     
+    if ftype:
+        return ftype.lower()
+    else:
+        return None
+ 
+def mobilize():
+    if not os.path.exists(userargs.output):
+        print('Destination {} does not exist'.format(userargs.output))
+        sys.exit(1)
+    else:
+        if not os.path.isdir(userargs.output):
+            print('Destination {} is not a directory'.format(userargs.output))
+            sys.exit(1)
+     
+    for srcpath in userargs.src:
+        if os.path.isdir(srcpath):
+            dname = os.path.basename(srcpath.rstrip('/'))
+            dname = ''.join([c for c in uncd.normalize('NFKC', dname) if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+            dstpath = os.path.join(userargs.output, dname)
+            if os.path.isdir(dstpath):
+                if not userargs.dry_run:
+                    shutil.rmtree(dstpath)
+            if userargs.dry_run:
+                dsttmp = tempfile.TemporaryDirectory(prefix='mobilize_')
+                dstpath = os.path.join(dsttmp.name, os.path.basename(srcpath.rstrip('/')))
+                
+        for dpath, _, fnames in os.walk(srcpath):
+            for fname in fnames:
+                ftype = getfiletype(os.path.join(dpath, fname))
+                if ftype in AUDIOTYPES:
+                    pass
+                elif ftype in IMAGETYPES: 
+                    pass
+ 
 if __name__ == '__main__':
     userargs = doparser()
     dochecks()
+    mobilize()
     
