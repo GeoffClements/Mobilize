@@ -92,10 +92,18 @@ class ActionConvert(ActionBase):
  
 class ActionCopy(ActionBase):
     def __call__(self):
+        if self.media.stype in IMAGETYPES:
+            if os.path.isdir(os.path.dirname(self.media.dpath)):
+                self.print_action()
+                shutil.copy(self.media.spath, self.media.dpath)
+        else:
+            self.print_action()
+            if not userargs.dry_run:
+                self.mkdir()
+                shutil.copy(self.media.spath, self.media.dpath)
+                
+    def print_action(self):
         if userargs.verbose: print('Copying {}'.format(pretty(self.media)))
-        if not userargs.dry_run:
-            self.mkdir()
-            shutil.copy(self.media.spath, self.media.dpath)
  
 class Action(object):
     def __new__(cls, media):
@@ -129,7 +137,7 @@ def user_filter(target):
     try:
         while True:
             media = (yield)
-            if filterlist:
+            if filterlist and media.stype in AUDIOTYPES:
                 if not filterlist.compare(media.tags):
                     target.send(media)
                 elif userargs.verbose:
@@ -174,36 +182,6 @@ class Media(object):
         else:
             return (tag[0], '')
                  
-# def prune():
-#     for srcpath in userargs.src:
-#         top = os.path.join(userargs.output, os.path.basename(srcpath.rstrip('/')))
-#         if os.path.isdir(top):
-#             for root, dirs, files in os.walk(top, topdown=False):
-#                 isaudio = False
-#                 for fname in files:# #!/usr/bin/env python3
-# 
-#                     ftype = getfiletype(os.path.join(root, fname))
-#                     if ftype in AUDIOTYPES:
-#                         isaudio = True
-#                         break
-#                 if not (isaudio or dirs):
-#                     shutil.rmtree(root, ignore_errors=True)
-#             if not os.listdir(top):
-#                 shutil.rmtree(root, ignore_errors=True)
-# 
-# if __name__ == '__main__':
-#     doparser()
-#     dochecks()
-#     pipeline = user_filter(set_action(do_action()))
-#     print('Mobilizing your music...')
-#     pool = mp.Pool(mp.cpu_count() * 2)
-#     mobilize()
-#     pool.close()
-#     pool.join()
-#     pipeline.close()
-#     if not userargs.dry_run: prune()
-#     print('Your music has been mobilized!')
-
 def doparser():
     parser = argparse.ArgumentParser(prog='mobilize', description="Send audio files to a mobile device")
     parser.epilog = """Copy audio files from one tree to another. 
@@ -222,7 +200,7 @@ def doparser():
                                         help='Show what is being done')
     parser.add_argument('-o', '--output', required=True,
                                             metavar='<output directory>', help='Destination root directory')
-    parser.add_argument('--version', action='version', version='%(prog)s 0.11')
+    parser.add_argument('--version', action='version', version='%(prog)s 1.0')
     parser.add_argument('src', nargs='+', help='Source root directory')
 
     args = parser.parse_args()
@@ -301,7 +279,8 @@ def mobilize():
                         pipeline.send(src_media)
                     elif src_media.stype in IMAGETYPES: 
                         image_files.append(src_media)
-                        #TODO: Handle images
+                for src_image in image_files:
+                    pipeline.send(src_image)
              
 if __name__ == '__main__':
     userargs = doparser()
