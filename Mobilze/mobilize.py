@@ -10,9 +10,7 @@
 # Requirements:
 # - Python (version 3.3 or above)
 # - sox
-# - ogg tools
-# - lame
-# - flac
+# - python3-ply
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -28,124 +26,113 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301, USA.
 ###################################################################
-# 
+
 import sys
 import os
 import shutil
 import argparse
 import subprocess as subp
 import imghdr
-# import xml.etree.ElementTree as et
 import tempfile
-# import multiprocessing as mp
+import multiprocessing as mp
 import unicodedata as uncd
-# 
+ 
 AUDIOTYPES = ('flac', 'vorbis', 'mp3')
 IMAGETYPES = ('jpeg', 'png')
-# 
-# def coroutine(f):
-#     def _coroutine(*args, **kwargs):
-#         cr = f(*args, **kwargs)
-#         cr.__next__()
-#         return cr
-#     return _coroutine
-# 
-# def pretty(media):
-#     retstr = ''
-#     for tag in ('Artist', 'Album', 'Title'):
-#         try:
-#             try:
-#                 retstr += media.origtags[tag] + '/'
-#             except KeyError:
-#                 try:
-#                     retstr += media.origtags[tag.upper()] + '/'
-#                 except KeyError:
-#                     retstr += os.path.basename(media.spath)
-#                     break
-#         except AttributeError:
-#             return os.path.basename(media.spath)
-#     return retstr.rstrip('/')
-# 
-# class ActionBase(object):
-#     def __init__(self, media):
-#         self.media = media
-#         
-# class ActionOgg(ActionBase):
-#     def __call__(self):
-#         if userargs.verbose: print('Converting {} to ogg'.format(pretty(self.media)))
-#         if not userargs.dry_run:
-#             procstr = ['oggenc', '--quiet']
-#             procstr.extend(('-q', '{0:.3f}'.format(userargs.quality)))
-#             procstr.extend(('-o', os.path.splitext(self.media.dpath)[0] + '.ogg'))
-#             procstr.append(self.media.spath)
-#             subp.call(procstr)
-# 
-# class ActionMp3(ActionBase):
-#     def __call__(self):
-#         if userargs.verbose: print('Converting {} to mp3'.format(pretty(self.media)))
-#         if not userargs.dry_run:
-#             procstr = ['lame', '--quiet', '--add-id3v2']
-#             procstr.extend(('-V', '{0:d}'.format(userargs.quality)))
-#             for tag in self.media.origtags.items():
-#                 if tag[0].upper() == 'TITLE':
-#                     procstr.extend(('--tt', tag[1]))
-#                 elif tag[0].upper() == 'ARTIST':
-#                     procstr.extend(('--ta', tag[1]))
-#                 elif tag[0].upper() == 'ALBUM':
-#                     procstr.extend(('--tl', tag[1]))
-#                 elif tag[0].upper() == 'YEAR':
-#                     procstr.extend(('--ty', tag[1]))
-#                 elif tag[0].upper() == 'DATE':
-#                     procstr.extend(('--ty', tag[1]))
-#                 elif tag[0].upper() == 'COMMENT':
-#                     procstr.extend(('--tc', tag[1]))
-#                 elif tag[0].upper() == 'TRACKNUMBER':
-#                     procstr.extend(('--tn', tag[1]))
-#                 elif tag[0].upper() == 'GENRE':
-#                     procstr.extend(('--tg', tag[1]))
-#             procstr.append('-')
-#             procstr.append(os.path.splitext(self.media.dpath)[0] + '.mp3')
-#             decproc = subp.Popen(['flac', '-c', '-d', self.media.spath], 
-#                                                     stdout=subp.PIPE, stderr=subp.DEVNULL)
-#             encproc = subp.Popen(procstr, stdin=decproc.stdout, stderr=subp.DEVNULL)
-#             decproc.stdout.close()
-#             encproc.wait()
-# 
-# class ActionCopy(ActionBase):
-#     def __call__(self):
-#         if userargs.verbose: print('Copying {}'.format(pretty(self.media)))
-#         if not userargs.dry_run:
-#             shutil.copy(self.media.spath, self.media.dpath)
-# 
-# class Action(object):
-#     def __new__(cls, media):
-#         if media.stype == 'flac':
-#             if userargs.preferred == 'ogg':
-#                 return ActionOgg(media)
-#             elif userargs.preferred == 'mp3':
-#                 return ActionMp3(media)
-#         else:
-#             return ActionCopy(media)
-#         
-# @coroutine
-# def do_action():
-#     try:
-#         while True:
-#             action = (yield)
-#             pool.apply_async(action)
-#     except GeneratorExit:
-#         pass
-# 
-# @coroutine
-# def set_action(target):
-#     try:
-#         while True:
-#             media = (yield)
-#             action = Action(media)
-#             target.send(action)
-#     except GeneratorExit:
-#         target.close()
-# 
+ 
+def coroutine(f):
+    def _coroutine(*args, **kwargs):
+        cr = f(*args, **kwargs)
+        next(cr)
+        return cr
+    return _coroutine
+ 
+def pretty(media):
+    retstr = ''
+    for tag in ('Artist', 'Album', 'Title'):
+        try:
+            try:
+                retstr += media.origtags[tag] + '/'
+            except KeyError:
+                try:
+                    retstr += media.origtags[tag.upper()] + '/'
+                except KeyError:
+                    retstr += os.path.basename(media.spath)
+                    break
+        except AttributeError:
+            return os.path.basename(media.spath)
+    return retstr.rstrip('/')
+ 
+class ActionBase(object):
+    def __init__(self, media):
+        self.media = media
+        
+    def mkdir(self):
+        target_dir = os.path.dirname(self.media.dpath)
+        if not os.path.isdir(target_dir):
+            os.makedirs(target_dir, exist_ok=True)
+         
+class ActionConvert(ActionBase):
+    def __call__(self):
+        if userargs.verbose: print('Converting {} to {}'.format(pretty(self.media), userargs.preferred))
+        if not userargs.dry_run:
+            self.mkdir()
+            procstr = ['sox', '-V0', self.media.spath]
+            if self.media.bits > 16:
+                procstr.extend(('--bits', '16'))
+            if self.media.rate > 44100:
+                procstr.extend(('--rate', '44100'))
+            if userargs.preferred == 'ogg':
+                quality = '{:.3}'.format(userargs.quality)
+            else:
+                quality = '-{:d}.2'.format(int(round(userargs.quality)))
+            procstr.extend(('--compression', '{}'.format(quality)))
+            procstr.append((os.path.splitext(self.media.dpath)[0] + '.' + userargs.preferred))
+            subp.call(procstr)
+ 
+class ActionCopy(ActionBase):
+    def __call__(self):
+        if userargs.verbose: print('Copying {}'.format(pretty(self.media)))
+        if not userargs.dry_run:
+            self.mkdir()
+            shutil.copy(self.media.spath, self.media.dpath)
+ 
+class Action(object):
+    def __new__(cls, media):
+        if media.stype == 'flac':
+            return ActionConvert(media)
+        else:
+            return ActionCopy(media)
+         
+@coroutine
+def do_action():
+    try:
+        while True:
+            action = (yield)
+            pool.apply_async(action)
+    except GeneratorExit:
+        pass
+ 
+@coroutine
+def set_action(target):
+    try:
+        while True:
+            media = (yield)
+            action = Action(media)
+            target.send(action)
+    except GeneratorExit:
+        target.close()
+ 
+@coroutine
+def user_filter(target):
+    try:
+        while True:
+            media = (yield)
+            #TODO: filter here
+            target.send(media)
+    except GeneratorExit:
+        target.close()
+ 
 # @coroutine
 # def user_filter(target):
 #     global userargs
@@ -227,6 +214,10 @@ class Media(object):
             splittags = [self.splitter(tag.split('=', 1)) for tag in tags if tag]
             self.tags = TagSet(splittags)
             self.origtags = {k:v for (k,v) in splittags}
+            self.rate = int(subp.check_output(['soxi', '-r', spath], stderr=subp.DEVNULL, 
+                                          universal_newlines=True))
+            self.bits = int(subp.check_output(['soxi', '-b', spath], stderr=subp.DEVNULL, 
+                                          universal_newlines=True))
              
     def inlist(self, tagsetlist):
         isinlist = False
@@ -387,6 +378,7 @@ def mobilize():
                 
         if os.path.isdir(srcpath):
             for src_dir_path, _, src_file_names in os.walk(srcpath):
+                image_files = []
                 for src_file_name in src_file_names:
                     dst_path_ext = src_dir_path.replace(srcpath, '')
                     dst_path_exts = dst_path_ext.split(os.sep)
@@ -394,12 +386,154 @@ def mobilize():
                     dst_file_path = os.path.join(dst_dir_path, dst_path_ext, src_file_name)
                     src_media = Media(os.path.join(src_dir_path, src_file_name), dst_file_path)
                     if src_media.stype in AUDIOTYPES:
-                        pass
+                        pipeline.send(src_media)
                     elif src_media.stype in IMAGETYPES: 
-                        pass
+                        image_files.append(src_media)
              
 if __name__ == '__main__':
     userargs = doparser()
     dochecks()
+#===============================================================================
+# Parsing of the exclude file starts here
+# PLY requires us to do this at module level so it's in-line here
+#===============================================================================
+    if userargs.exclude:
+        tokens = ('EXCLUDE', 'LPAREN', 'RPAREN', 'AUDIOTAG', 'IS', 
+                  'HAS', 'STRING', 'BETWEEN', 'AND')
+        
+        t_EXCLUDE  = r'exclude'
+        t_LPAREN   = r'\('
+        t_RPAREN   = r'\)'
+        t_AUDIOTAG = r'(album)|(artist)|(date)|(year)|(genre)|(comments?)'
+        t_IS       = r'is'
+        t_HAS      = r'has'
+        t_BETWEEN  = r'between'
+        t_AND      = r'and'
+        
+        def t_STRING(t):
+            r'\"([^\\\n]|(\\.))*?\"'
+            t.value = t.value.strip('"')
+            return t
+        
+        t_ignore = ' \t'
+        
+        # Define a rule so we can track line numbers
+        def t_newline(t):
+            r'\n+'
+            t.lexer.lineno += len(t.value)
+        
+        # Error handling rule
+        def t_error(t):
+            print("Illegal character '%s'" % t.value[0])
+            t.lexer.skip(1)
+        
+        import ply.lex as lex
+        lexer = lex.lex(debug=False)
+        
+        class TagCompare(object):
+            def __init__(self, audiotag, op, value):
+                self.audiotag = audiotag
+                self.op = op
+                self.value = value
+                
+            def compare(self, audiodata):
+                if self.op == 'is':
+                    return self.value.lower() == audiodata[self.audiotag].lower()
+                elif self.op == 'has':
+                    return self.value.lower() in audiodata[self.audiotag].lower()
+                elif self.op == 'between':
+                    # TODO: date comparison
+                    return True
+            
+        class TagCompareList(list):
+            def __init__(self, initlist=(), op='OR', invert=False):
+                super().__init__(initlist)
+                self.op = op
+                self.invert = invert
+            
+            def compare(self, audiodata):
+                result = not self.op == 'OR'
+                if result:
+                    for item in self:
+                        result = result and item.compare(audiodata)
+                        if not result:
+                            break
+                else:
+                    for item in self:
+                        result = result or item.compare(audiodata)
+                        if result:
+                            break
+                if self.invert:
+                    result = not result
+                return result
+        
+        '''
+        exclude_list : EXCLUDE LPAREN expression_list RPAREN
+        
+        expression_list : expression_list expression
+                        | expression
+        
+        expression : simple_expression
+                   | compound_expression
+        
+        compound_expression : simple_expression LPAREN expression_list RPAREN
+        
+        simple_expression : AUDIOTAG IS STRING
+                          | AUDIOTAG HAS STRING
+                          | AUDIOTAG BETWEEN STRING AND STRING
+        '''
+        
+        
+        def p_exclude_list(p):
+            'exclude_list : EXCLUDE LPAREN expression_list RPAREN'
+            p[0] = TagCompareList(p[3])
+        
+        def p_expression_list(p):
+            '''expression_list : expression_list expression
+                               | expression'''
+            expression_list = TagCompareList()
+            if len(p) == 3:
+                expression_list.extend((p[1], p[2]))
+            else:
+                expression_list.append(p[1])
+            p[0] = expression_list
+        
+        def p_expression(p):
+            '''expression : simple_expression
+                          | compound_expression'''
+            p[0] = p[1]
+        
+        def p_compound_expression(p):
+            'compound_expression : expression LPAREN expression_list RPAREN'
+            sub_list = TagCompareList(p[3])
+            p[0] = TagCompareList((p[1], sub_list), op='AND')
+        
+        def p_simple_expression(p):
+            '''simple_expression : AUDIOTAG IS STRING
+                                 | AUDIOTAG HAS STRING
+                                 | AUDIOTAG BETWEEN STRING AND STRING'''
+            
+            value = (p[3], p[5]) if len(p) == 6 else p[3]
+            p[0] = TagCompare(p[1], p[2], value)
+        
+        # Error rule for syntax errors
+        def p_error(p):
+            print("Syntax error in input!")
+        
+        import ply.yacc as yacc
+        parser = yacc.yacc(debug=False)
+        filterlist = parser.parse(userargs.exclude.read())
+    else:
+        filterlist = None
+#===============================================================================
+# End of exclude file parsing
+#===============================================================================
+    pipeline = user_filter(set_action(do_action()))
+    print('Mobilizing your music...')
+    pool = mp.Pool(mp.cpu_count() + 1)
     mobilize()
+    pool.close()
+    pool.join()
+    pipeline.close()
+    print('Your music has been mobilized!')
     
