@@ -443,7 +443,7 @@ if __name__ == '__main__':
             print("Syntax error in input!")
         
         import ply.yacc as yacc
-        parser = yacc.yacc(debug=False)
+        parser = yacc.yacc(debug=False, write_tables=False)
         filterlist = parser.parse(userargs.exclude.read())
     else:
         filterlist = None
