@@ -49,13 +49,13 @@ def coroutine(f):
  
 def pretty(media):
     retstr = ''
-    for tag in ('Artist', 'Album', 'Title'):
+    for tag in ('artist', 'album', 'title'):
         try:
             try:
-                retstr += media.origtags[tag] + '/'
+                retstr += media.tags[tag] + '/'
             except KeyError:
                 try:
-                    retstr += media.origtags[tag.upper()] + '/'
+                    retstr += media.tags[tag.upper()] + '/'
                 except KeyError:
                     retstr += os.path.basename(media.spath)
                     break
@@ -110,6 +110,7 @@ def do_action():
         while True:
             action = (yield)
             pool.apply_async(action)
+            #action()
     except GeneratorExit:
         pass
  
@@ -128,80 +129,17 @@ def user_filter(target):
     try:
         while True:
             media = (yield)
-            #TODO: filter here
-            target.send(media)
+            if filterlist:
+                if not filterlist.compare(media.tags):
+                    target.send(media)
+                elif userargs.verbose:
+                    print('Rejecting {}'.format(pretty(media)))
+            else:
+                target.send(media)
+                
     except GeneratorExit:
         target.close()
  
-# @coroutine
-# def user_filter(target):
-#     global userargs
-#     userargs.exclist = []
-#     userargs.inclist = []
-#     
-#     def process_ex(root, tagslist=None, applist=None):
-#         if tagslist is None:
-#             tagslist = []
-#         if applist is None:
-#             applist = userargs.exclist
-#             
-#         if root.tag == 'exclude':
-#             for child in root.getchildren():
-#                 process_ex(child, tagslist[:], userargs.exclist)
-#         elif root.tag == 'include':
-#             for child in root.getchildren():
-#                 process_ex(child, tagslist[:], userargs.inclist)
-#         else:
-#             if root.getchildren():
-#                 try:
-#                     tagslist.append((root.tag, root.attrib['name']))
-#                 except:
-#                     print('Exclude error in tag {}'.format(root.tag))
-# 
-#                 for child in root.getchildren():
-#                     process_ex(child, tagslist[:], applist)
-#             else:
-#                 tagslist.append((root.tag, root.text))
-#                 applist.append(TagSet(tagslist))
-#     
-#     if userargs.exclude:
-#         try:
-#             excroot = et.parse(userargs.exclude).getroot()
-#         except Exception as e:
-#             print('Error in {}: {}'.format(userargs.exclude.name, e))
-#         else:
-#             process_ex(excroot)
-#         
-#     try:
-#         while True:
-#             media = (yield)
-#             isfilter = False
-#             if media.stype in AUDIOTYPES:
-#                 if media.inlist(userargs.exclist):
-#                     if not media.inlist(userargs.inclist):
-#                         isfilter = True
-#             elif media.stype not in IMAGETYPES:
-#                 isfilter = True
-#             if not isfilter:
-#                 target.send(media)
-#             else:
-#                 if userargs.verbose: print('Excluding {}'.format(pretty(media)))
-#     except GeneratorExit:
-#         target.close()
-# 
-class TagSet(set):
-    def __init__(self, taglist):
-        newtags = []
-        for tag in taglist:
-            tagn = tag[0].upper()
-            tagv = tag[1].upper()
-            newtags.append((tagn, tagv))
-            if tagn == 'YEAR':
-                newtags.append(('DATE', tagv))
-            elif tagn == 'DATE':
-                newtags.append(('YEAR', tagv))
-        super().__init__(newtags)
-             
 class Media(object):
     def __init__(self, spath, dpath):
         self.spath = spath
@@ -212,8 +150,11 @@ class Media(object):
                                     stderr=subp.DEVNULL, 
                                     universal_newlines=True).split('\n')
             splittags = [self.splitter(tag.split('=', 1)) for tag in tags if tag]
-            self.tags = TagSet(splittags)
-            self.origtags = {k:v for (k,v) in splittags}
+            self.tags = {k.lower():v for (k,v) in splittags}
+            if 'date' in self.tags.keys():
+                self.tags['year'] = self.tags['date']
+            elif 'year' in self.tags.keys():
+                self.tags['date'] = self.tags['year']
             self.rate = int(subp.check_output(['soxi', '-r', spath], stderr=subp.DEVNULL, 
                                           universal_newlines=True))
             self.bits = int(subp.check_output(['soxi', '-b', spath], stderr=subp.DEVNULL, 
@@ -233,35 +174,6 @@ class Media(object):
         else:
             return (tag[0], '')
                  
-# def mediacopy(spath, dpath):
-#     global pipeline
-#     pipeline.send(Media(spath, dpath))
-# 
-# def mobilize():
-#     if not os.path.exists(userargs.output):
-#         print('Destination {} does not exist'.format(userargs.output))
-#         sys.exit(1)
-#     else:
-#         if not os.path.isdir(userargs.output):
-#             print('Destination {} is not a directory'.format(userargs.output))
-#             sys.exit(1)
-#     
-#     for srcpath in userargs.src:
-#         if os.path.isdir(srcpath):
-#             dname = os.path.basename(srcpath.rstrip('/'))
-#             dname = ''.join([c for c in uncd.normalize('NFKC', dname) if c.isalpha() or c.isdigit() or c==' ']).rstrip()
-#             dstpath = os.path.join(userargs.output, dname)
-#             if os.path.isdir(dstpath):
-#                 if not userargs.dry_run:
-#                     shutil.rmtree(dstpath)
-#             if userargs.dry_run:
-#                 dsttmp = tempfile.TemporaryDirectory(prefix='mobilize_')
-#                 dstpath = os.path.join(dsttmp.name, os.path.basename(srcpath.rstrip('/')))
-# 
-#             shutil.copytree(srcpath, dstpath, 
-#                                             ignore=shutil.ignore_patterns('.*'), 
-#                                             copy_function=mediacopy)
-# 
 # def prune():
 #     for srcpath in userargs.src:
 #         top = os.path.join(userargs.output, os.path.basename(srcpath.rstrip('/')))
@@ -389,6 +301,7 @@ def mobilize():
                         pipeline.send(src_media)
                     elif src_media.stype in IMAGETYPES: 
                         image_files.append(src_media)
+                        #TODO: Handle images
              
 if __name__ == '__main__':
     userargs = doparser()
@@ -437,13 +350,22 @@ if __name__ == '__main__':
                 self.value = value
                 
             def compare(self, audiodata):
-                if self.op == 'is':
-                    return self.value.lower() == audiodata[self.audiotag].lower()
-                elif self.op == 'has':
-                    return self.value.lower() in audiodata[self.audiotag].lower()
-                elif self.op == 'between':
-                    # TODO: date comparison
-                    return True
+                try:
+                    if self.op == 'is':
+                        return self.value.lower() == audiodata[self.audiotag].lower()
+                    elif self.op == 'has':
+                        return self.value.lower() in audiodata[self.audiotag].lower()
+                    elif self.op == 'between':
+                        assert self.audiotag == 'year'
+                        try:
+                            values = [int(v) for v in self.value]
+                            values.sort()
+                            adate = int(audiodata['date'])
+                        except ValueError:
+                            return False
+                        return values[0] <= adate <= values[1]
+                except:
+                    return False
             
         class TagCompareList(list):
             def __init__(self, initlist=(), op='OR', invert=False):
