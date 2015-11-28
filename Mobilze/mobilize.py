@@ -202,46 +202,46 @@ IMAGETYPES = ('jpeg', 'png')
 #     except GeneratorExit:
 #         target.close()
 # 
-# class TagSet(set):
-#     def __init__(self, taglist):
-#         newtags = []
-#         for tag in taglist:
-#             tagn = tag[0].upper()
-#             tagv = tag[1].upper()
-#             newtags.append((tagn, tagv))
-#             if tagn == 'YEAR':
-#                 newtags.append(('DATE', tagv))
-#             elif tagn == 'DATE':
-#                 newtags.append(('YEAR', tagv))            
-#         super().__init__(newtags)
-#             
-# class Media(object):
-#     def __init__(self, spath, dpath):
-#         self.spath = spath
-#         self.dpath = dpath
-#         self.stype = getfiletype(spath)
-#         if self.stype in AUDIOTYPES:
-#             tags = subp.check_output(['soxi', '-a', spath], 
-#                                                                stderr=subp.DEVNULL, 
-#                                                                universal_newlines=True).split('\n')
-#             splittags = [self.splitter(tag.split('=', 1)) for tag in tags if tag]
-#             self.tags = TagSet(splittags)
-#             self.origtags = {k:v for (k,v) in splittags}
-#             
-#     def inlist(self, tagsetlist):
-#         isinlist = False
-#         for tagset in tagsetlist:
-#             if tagset <= self.tags:
-#                 isinlist = True
-#                 break
-#         return isinlist
-# 
-#     def splitter(self, tag):
-#         if len(tag) == 2:
-#             return tag
-#         else:
-#             return (tag[0], '')
-#                 
+class TagSet(set):
+    def __init__(self, taglist):
+        newtags = []
+        for tag in taglist:
+            tagn = tag[0].upper()
+            tagv = tag[1].upper()
+            newtags.append((tagn, tagv))
+            if tagn == 'YEAR':
+                newtags.append(('DATE', tagv))
+            elif tagn == 'DATE':
+                newtags.append(('YEAR', tagv))
+        super().__init__(newtags)
+             
+class Media(object):
+    def __init__(self, spath, dpath):
+        self.spath = spath
+        self.dpath = dpath
+        self.stype = getfiletype(spath)
+        if self.stype in AUDIOTYPES:
+            tags = subp.check_output(['soxi', '-a', spath], 
+                                    stderr=subp.DEVNULL, 
+                                    universal_newlines=True).split('\n')
+            splittags = [self.splitter(tag.split('=', 1)) for tag in tags if tag]
+            self.tags = TagSet(splittags)
+            self.origtags = {k:v for (k,v) in splittags}
+             
+    def inlist(self, tagsetlist):
+        isinlist = False
+        for tagset in tagsetlist:
+            if tagset <= self.tags:
+                isinlist = True
+                break
+        return isinlist
+ 
+    def splitter(self, tag):
+        if len(tag) == 2:
+            return tag
+        else:
+            return (tag[0], '')
+                 
 # def mediacopy(spath, dpath):
 #     global pipeline
 #     pipeline.send(Media(spath, dpath))
@@ -355,7 +355,10 @@ def getfiletype(fname):
                 stderr=subp.DEVNULL, 
                 universal_newlines=True).rstrip('\n')
     except subp.CalledProcessError:
-        ftype = imghdr.what(fname)
+        try:
+            ftype = imghdr.what(fname)
+        except:
+            ftype = None
      
     if ftype:
         return ftype.lower()
@@ -363,6 +366,10 @@ def getfiletype(fname):
         return None
  
 def mobilize():
+    
+    def norm(s):
+        return ''.join([c for c in uncd.normalize('NFKC', s) if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+    
     if not os.path.exists(userargs.output):
         print('Destination {} does not exist'.format(userargs.output))
         sys.exit(1)
@@ -372,25 +379,25 @@ def mobilize():
             sys.exit(1)
      
     for srcpath in userargs.src:
-        if os.path.isdir(srcpath):
-            dname = os.path.basename(srcpath.rstrip('/'))
-            dname = ''.join([c for c in uncd.normalize('NFKC', dname) if c.isalpha() or c.isdigit() or c==' ']).rstrip()
-            dstpath = os.path.join(userargs.output, dname)
-            if os.path.isdir(dstpath):
-                if not userargs.dry_run:
-                    shutil.rmtree(dstpath)
-            if userargs.dry_run:
-                dsttmp = tempfile.TemporaryDirectory(prefix='mobilize_')
-                dstpath = os.path.join(dsttmp.name, os.path.basename(srcpath.rstrip('/')))
+        if userargs.dry_run:
+            dsttmp = tempfile.TemporaryDirectory(prefix='mobilize_')
+            dst_dir_path = os.path.join(dsttmp.name, os.path.basename(srcpath.rstrip('/')))
+        else:
+            dst_dir_path = userargs.output
                 
-        for dpath, _, fnames in os.walk(srcpath):
-            for fname in fnames:
-                ftype = getfiletype(os.path.join(dpath, fname))
-                if ftype in AUDIOTYPES:
-                    pass
-                elif ftype in IMAGETYPES: 
-                    pass
- 
+        if os.path.isdir(srcpath):
+            for src_dir_path, _, src_file_names in os.walk(srcpath):
+                for src_file_name in src_file_names:
+                    dst_path_ext = src_dir_path.replace(srcpath, '')
+                    dst_path_exts = dst_path_ext.split(os.sep)
+                    dst_path_ext = os.path.join(*([norm(p) for p in dst_path_exts]))
+                    dst_file_path = os.path.join(dst_dir_path, dst_path_ext, src_file_name)
+                    src_media = Media(os.path.join(src_dir_path, src_file_name), dst_file_path)
+                    if src_media.stype in AUDIOTYPES:
+                        pass
+                    elif src_media.stype in IMAGETYPES: 
+                        pass
+             
 if __name__ == '__main__':
     userargs = doparser()
     dochecks()
