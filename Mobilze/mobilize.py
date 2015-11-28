@@ -2,7 +2,7 @@
  
 ###################################################################
 # mobilize - transfer music to your portable player
-# (c) Copyright - 2014 Geoff Clements
+# (c) Copyright - 2015 Geoff Clements
 #
 # Transfers music to your portable player converting flacs to 
 # ogg or mp3 on the way and excluding unwanted music.
